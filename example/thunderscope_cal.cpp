@@ -68,6 +68,84 @@ auto awake_time()
     return now() + 500ms;
 }
 
+static void cal_get_average_value(tsHandle_t pTs, uint8_t chanBitmap, uint32_t numSamples, uint8_t* pAvgResult)
+{
+    //Capture average
+    //Setup and Enable Channels
+    tsChannelParam_t chConfig = {0};
+    uint8_t numChan = 0;
+    uint8_t channel = 0;
+    while(chanBitmap > 0)
+    {
+        if(chanBitmap & 0x1)
+        {
+            thunderscopeChannelConfigGet(pTs, channel, &chConfig);
+            chConfig.active = 1;
+            thunderscopeChannelConfigSet(pTs, channel, &chConfig);
+        }
+        channel++;
+        chanBitmap >>= 1;
+    }
+    if(numChan > 2)
+            numChan = 4;
+
+    uint8_t* sampleBuffer = (uint8_t*)calloc(((numSamples*numChan) + DMA_BUFFER_SIZE-1)/DMA_BUFFER_SIZE, DMA_BUFFER_SIZE);
+    uint64_t sampleLen = 0;
+
+    uint64_t data_sum = 0;
+    //Start Sample capture
+    thunderscopeDataEnable(pTs, 1);
+    
+    if(sampleBuffer != NULL)
+    {
+            //Collect Samples
+            int32_t readRes = thunderscopeRead(pTs, sampleBuffer, numSamples);
+            if(readRes < 0)
+            {
+                printf("ERROR: Sample Get Buffers failed with %" PRIi32, readRes);
+            }
+            if(readRes != numSamples)
+            {
+                printf("WARN: Read returned different number of bytes, %" PRIu32 " / %" PRIu32 "\r\n", readRes, numSamples);
+            }
+    }
+
+    //Stop Samples
+    thunderscopeDataEnable(pTs, 0);
+
+    if(sampleLen > 0)
+    {
+        uint64_t avg[TS_NUM_CHANNELS] = {0};
+        uint64_t idx = 0;
+        while (idx < sampleLen)
+        {
+            avg[0] += sampleBuffer[idx++];
+            if(numChan > 1)
+            {
+                avg[1] += sampleBuffer[idx++];
+                if(numChan > 2)
+                {
+                    avg[2] += sampleBuffer[idx++];
+                    avg[3] += sampleBuffer[idx++];
+                }
+            }
+        }
+        pAvgResult[0] = (uint8_t)(avg[0] / sampleLen);
+        pAvgResult[1] = (uint8_t)(avg[1] / sampleLen);
+        pAvgResult[2] = (uint8_t)(avg[2] / sampleLen);
+        pAvgResult[3] = (uint8_t)(avg[3] / sampleLen);
+
+    }
+    
+    //Disable channels
+    for(uint8_t i=0; i < TS_NUM_CHANNELS; i++)
+    {
+        thunderscopeChannelConfigGet(pTs, i, &chConfig);
+        chConfig.active = 0;
+        thunderscopeChannelConfigSet(pTs, i, &chConfig);
+    }
+}
+
 static void cal_step_0(tsHandle_t pTs, uint8_t chanBitmap)
 {
     //Set Channels to unity gain, no offset
@@ -270,24 +348,82 @@ static void cal_step_3(tsHandle_t pTs, uint8_t chanBitmap)
 static void cal_step_4(tsHandle_t pTs, uint8_t chanBitmap)
 {
     // Characterize Preamp Output Offset
+    // Set V_trim to 2.5V
+    // Set Low Gain (no attenuator, 1M termination, Low preamp gain)
+    tsChannelParam_t param = {0};
+    param.active = false;
+    param.volt_scale_mV = 79;
+    param.volt_offset_mV = 0;
+    param.bandwidth = 0;
+    param.coupling = TS_COUPLE_AC;
+    param.term = TS_TERM_1M;
+    
+    for(uint32_t i=0; i < TS_NUM_CHANNELS; i++)
+    {
+        if((chanBitmap >> i) & 0x1)
+        {
+            thunderscopeChannelConfigSet(pTs, i, &param);
+        }
+    }
 
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+
+    // Measure Average values
+    uint8_t currentVal[TS_NUM_CHANNELS] = {0};
+    cal_get_average_value(pTs, chanBitmap, DMA_BUFFER_SIZE*128, currentVal);
+    for(uint32_t i=0; i < TS_NUM_CHANNELS; i++)
+    {
+        if((chanBitmap >> i) & 0x1)
+        {
+            // Set average for channel as cal.preampLowOffset_mv
+            calibration.afeCal[i].preampLowOffset_mV = (int32_t)((((double)currentVal[i]) - 128.0)/700.0);
+            printf("Saving value of %i mV for Channel %d Preamp Low-gain Offset\r\n", calibration.afeCal[i].preampLowOffset_mV, i);
+        }
+    }
+   
+    FLUSH();
+    printf("<Press ENTER to continue>\r\n");
+    while(getchar() != '\n') {;;}
+
+    // Set High Gain (no attenuator, 1M termination, High preamp gain)
+    param.active = false;
+    param.volt_scale_mV = 8;
+    param.volt_offset_mV = 0;
+    param.bandwidth = 0;
+    param.coupling = TS_COUPLE_AC;
+    param.term = TS_TERM_1M;
+    
+    for(uint32_t i=0; i < TS_NUM_CHANNELS; i++)
+    {
+        if((chanBitmap >> i) & 0x1)
+        {
+            thunderscopeChannelConfigSet(pTs, i, &param);
+        }
+    }
+
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+
+    // Measure Average values
+    cal_get_average_value(pTs, chanBitmap, DMA_BUFFER_SIZE*128, currentVal);
+    for(uint32_t i=0; i < TS_NUM_CHANNELS; i++)
+    {
+        if((chanBitmap >> i) & 0x1)
+        {
+            // Set average for channel as cal.preampLowOffset_mv
+            calibration.afeCal[i].preampHighOffset_mV = (int32_t)((((double)currentVal[i]) - 128.0)/700.0);
+            printf("Saving value of %i mV for Channel %d Preamp High-gain Offset\r\n", calibration.afeCal[i].preampHighOffset_mV, i);
+        }
+    }
+    
+    FLUSH();
+    printf("<Press ENTER to continue>\r\n");
+    while(getchar() != '\n') {;;}
 }
 
 #define TS_CAL_STEPS 4
 static void do_calibration(file_t fd, uint32_t idx, uint8_t channelBitmap, uint32_t stepNo)
 {
     tsHandle_t tsHdl = thunderscopeOpen(idx);
-    // tsChannelHdl_t channels;
-    // sampleStream_t samp;
-
-    // ts_channel_init(&channels, fd);
-    // if(channels == NULL)
-    // {
-    //     printf("Failed to create channels handle");
-    //     return;
-    // }
-
-    // samples_init(&samp, 0, 0);
 
     //Load Starting Config or set Default
     for(uint32_t i=0; i < TS_NUM_CHANNELS; i++)
@@ -307,7 +443,7 @@ static void do_calibration(file_t fd, uint32_t idx, uint8_t channelBitmap, uint3
             calibration.afeCal[i].preampHighOffset_mV = 0;
             calibration.afeCal[i].preampInputBias_uA = TS_PREAMP_INPUT_BIAS_CURRENT_uA;
 
-            thunderscopeCalibrationSet(tsHdl, i, calibration.afeCal[i]);
+            thunderscopeCalibrationSet(tsHdl, i, &calibration.afeCal[i]);
         }
     }
 
@@ -334,104 +470,12 @@ static void do_calibration(file_t fd, uint32_t idx, uint8_t channelBitmap, uint3
     {
         if((channelBitmap >> i) & 0x1)
         {
-            thunderscopeCalibrationSet(tsHdl, i, calibration.afeCal[i]);
+            thunderscopeCalibrationSet(tsHdl, i, &calibration.afeCal[i]);
         }
     }
 
-    // ts_channel_destroy(channels);
-    // samples_teardown(&samp);
     thunderscopeClose(tsHdl);
 }
-
-//Capture average
-
-    // uint8_t* sampleBuffer = (uint8_t*)calloc(TS_SAMPLE_BUFFER_SIZE * 10, 1);
-    // uint64_t sampleLen = 0;
-
-    // //Setup and Enable Channels
-    // tsChannelParam_t chConfig = {0};
-    // uint8_t channel = 0;
-    // while(channelBitmap > 0)
-    // {
-    //     if(channelBitmap & 0x1)
-    //     {
-    //         thunderscopeChannelConfigGet(tsHdl, channel, &chConfig);
-    //         chConfig.volt_scale_mV = volt_scale_mV;
-    //         chConfig.volt_offset_mV = offset_mV;
-    //         chConfig.bandwidth = bandwidth;
-    //         chConfig.coupling = ac_couple ? TS_COUPLE_AC : TS_COUPLE_DC;
-    //         chConfig.term =  term ? TS_TERM_50 : TS_TERM_1M;
-    //         chConfig.active = 1;
-    //         // ts_channel_params_set(channels, channel, &chConfig);
-    //         thunderscopeChannelConfigSet(tsHdl, channel, &chConfig);
-    //         numChan++;
-    //     }
-    //     channel++;
-    //     channelBitmap >>= 1;
-    // }
-
-    // uint64_t data_sum = 0;
-    // //Start Sample capture
-    // // samples_enable_set(&samp, 1);
-    // // ts_channel_run(channels, 1);
-    // thunderscopeDataEnable(tsHdl, 1);
-    
-    // if(sampleBuffer != NULL)
-    // {
-    //     for(uint32_t loop=0; loop < 100; loop++)
-    //     {
-    //         uint32_t readReq = (TS_SAMPLE_BUFFER_SIZE * 0x8000);
-    //         //Collect Samples
-    //         // int32_t readRes = samples_get_buffers(&samp, sampleBuffer, readReq);
-    //         int32_t readRes = thunderscopeRead(tsHdl, sampleBuffer, readReq);
-    //         if(readRes < 0)
-    //         {
-    //             printf("ERROR: Sample Get Buffers failed with %" PRIi32, readRes);
-    //         }
-    //         if(readRes != readReq)
-    //         {
-    //             printf("WARN: Read returned different number of bytes for loop %" PRIu32 ", %" PRIu32 " / %" PRIu32 "\r\n", loop, readRes, readReq);
-    //         }
-    //         data_sum += readReq;
-    //         sampleLen = readRes;
-    //     }
-    // }
-
-    // //Stop Samples
-    // // samples_enable_set(&samp, 0);
-    // // ts_channel_run(channels, 0);
-    // thunderscopeDataEnable(tsHdl, 0);
-
-    // if(sampleLen > 0)
-    // {
-    //     uint64_t sample = 0;
-    //     uint64_t idx = 0;
-    //     while (idx < sampleLen)
-    //     {
-    //         avg[0][sample] = sampleBuffer[idx++];
-    //         if(numChan > 1)
-    //         {
-    //             avg[1][sample] = sampleBuffer[idx++];
-    //             if(numChan > 2)
-    //             {
-    //                 avg[2][sample] = sampleBuffer[idx++];
-    //                 avg[3][sample] = sampleBuffer[idx++];
-    //             }
-    //         }
-    //         sample++;
-    //     }
-    // }
-
-    
-    // //Disable channels
-    // for(uint8_t i=0; i < TS_NUM_CHANNELS; i++)
-    // {
-    //     // ts_channel_params_get(channels, i, &chConfig);
-    //     thunderscopeChannelConfigGet(tsHdl, i, &chConfig);
-    //     chConfig.active = 0;
-    //     // ts_channel_params_set(channels, i, &chConfig);
-    //     thunderscopeChannelConfigSet(tsHdl, i, &chConfig);
-    // }
 
 static void print_help(void)
 {

@@ -972,7 +972,7 @@ int main(int argc, char** argv)
         exit(EXIT_SUCCESS);
     }
 
-    if(0 == strcmp(arg, "clk"))
+    if(0 == strcmp(arg, "clkgen"))
     {
         mcp_clkgen_conf_t test_conf[1024];
         zl3026x_clk_config_t clk_config = {0};
@@ -1083,7 +1083,7 @@ int main(int argc, char** argv)
         flash_test(argv[argCount+1], fd);
     }
     // Test REF Clock Modes
-    else if(0 == strcmp(arg, "clock"))
+    else if(0 == strcmp(arg, "refclk"))
     {
         test_clock(idx, refOutClk, refInClk, refclkFreq);
     }

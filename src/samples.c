@@ -154,7 +154,7 @@ int32_t samples_get_buffers(sampleStream_t* inst, uint8_t* sampleBuffer, uint32_
             }
             if(buff_available > 0)
             {
-                memcpy(sampleBuffer, &(inst->dma.buf_rd[(inst->driver_buffer_count % DMA_BUFFER_COUNT) * TS_SAMPLE_BUFFER_SIZE]), TS_SAMPLE_BUFFER_SIZE);
+                memcpy(sampleBuffer + retVal, &(inst->dma.buf_rd[(inst->driver_buffer_count % DMA_BUFFER_COUNT) * TS_SAMPLE_BUFFER_SIZE]), TS_SAMPLE_BUFFER_SIZE);
                 inst->driver_buffer_count++;
                 retVal += TS_SAMPLE_BUFFER_SIZE;
             }

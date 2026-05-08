@@ -69,7 +69,7 @@ int32_t ts_data_factory_id_get(ts_fw_manager_t* mngr, tsDeviceInfo_t* infos)
     }
 
     // Fill struct with info
-    if(json_object_object_get_ex(fid,"Serial Number", &item))
+    if(json_object_object_get_ex(fid,"serial", &item))
     {
         if(json_object_get_type(item) == json_type_string)
         {
@@ -85,7 +85,7 @@ int32_t ts_data_factory_id_get(ts_fw_manager_t* mngr, tsDeviceInfo_t* infos)
         LOG_ERROR("Serial Number key not found");
     }
 
-    if(json_object_object_get_ex(fid,"Board Revision", &item))
+    if(json_object_object_get_ex(fid,"boardRevision", &item))
     {
         if(json_object_get_type(item) == json_type_int)
         {
@@ -101,7 +101,7 @@ int32_t ts_data_factory_id_get(ts_fw_manager_t* mngr, tsDeviceInfo_t* infos)
         LOG_ERROR("Board Revision key not found");
     }
 
-    if(json_object_object_get_ex(fid,"Build Config", &item))
+    if(json_object_object_get_ex(fid,"buildConfiguration", &item))
     {
         if(json_object_get_type(item) == json_type_string)
         {
@@ -118,7 +118,7 @@ int32_t ts_data_factory_id_get(ts_fw_manager_t* mngr, tsDeviceInfo_t* infos)
     }
 
     // Build Date
-    if(json_object_object_get_ex(fid,"Build Date", &item))
+    if(json_object_object_get_ex(fid,"buildDate", &item))
     {
         if(json_object_get_type(item) == json_type_string)
         {
@@ -135,7 +135,7 @@ int32_t ts_data_factory_id_get(ts_fw_manager_t* mngr, tsDeviceInfo_t* infos)
     }
 
     // Signature
-    if(json_object_object_get_ex(fid,"Mfg Signature", &item))
+    if(json_object_object_get_ex(fid,"manufacturingSignature", &item))
     {
         if(json_object_get_type(item) == json_type_string)
         {

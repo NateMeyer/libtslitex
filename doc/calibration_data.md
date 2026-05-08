@@ -7,31 +7,21 @@
 - Factory Provision Verify
 - Factory Read Item
 
-
 ### Factory TLV's
 
-Each section is dentoted by a 32-bit TAG, 32-bit LENGTH, ASCII Data, and CRC32 Checksum.
+`[tag][length][data][crc32]`
+
+`tag`: 4 bytes (e.g. 'HWID' or 'FCAL')  
+`length`: uint32 length of data section, network order  
+`data`: byte array  
+`crc32`: uint32, network order  
 
 #### HWID
 
 - Tag: `HWID`
-- Format: JSON
-- Contents:
-    - ID Version
-    - "Serial Number"
-    - "Board Revision"
-    - "Build Config"
-    - "Build Date"
-    - "Mfg Signature"
-
+- Data format: JSON (hwid.schema.json)
 
 #### FCAL
 
 - Tag: `FCAL`
-- Format: JSON
-- Contents:
-    - Calibration Version
-    - Calibration Station
-    - Calibration Date
-    - Calibration Data
-
+- Data format: JSON (fcal.schema.json)

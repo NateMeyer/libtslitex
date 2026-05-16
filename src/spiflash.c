@@ -339,7 +339,8 @@ int32_t spiflash_erase(spiflash_dev_t* dev, uint32_t addr, uint32_t len)
 int32_t spiflash_write(spiflash_dev_t* dev, uint32_t addr, const uint8_t *pData, uint32_t len)
 {
     int res = 0;
-    uint32_t w_len = min(len, SPI_FLASH_PROG_SIZE);
+    // First write length may be smaller if the addr does not start at the beginning of a page.
+    uint32_t w_len = min(len, (SPI_FLASH_PROG_SIZE - (addr % SPI_FLASH_PROG_SIZE)));
     uint32_t offset = 0;
     uint32_t j = 0;
 
